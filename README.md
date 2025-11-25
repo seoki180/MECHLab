@@ -1,4 +1,4 @@
-Using CPython 3.13.5 interpreter at: /opt/miniconda3/bin/python3
+## Using CPython 3.13.5 interpreter at: /opt/miniconda3/bin/python3
 
 Creating virtual environment at: .venv
 

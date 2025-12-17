@@ -1,7 +1,7 @@
 import wx
 
 from Frame.CameraFrame import CameraFrame
-from Frame.SecondFrame import SecondFrame
+from Frame.FileFrame import FileFrame
 from Panel.Menubar import MenuBar
 
 
@@ -72,7 +72,7 @@ class MenuFrame(wx.Frame):
     def on_option1(self, event):
         # 첫 번째 버튼 - SecondFrame으로 이동
         self.Hide()
-        second_frame = SecondFrame(self.first_frame)
+        second_frame = FileFrame(self.first_frame)
         second_frame.Show()
         self.Destroy()
 

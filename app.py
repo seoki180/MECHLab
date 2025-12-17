@@ -15,11 +15,6 @@ class InitFrame(wx.Frame):
         # 메인 sizer
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # # 상단 메뉴바 영역
-        # menubar_panel = wx.Panel(panel)
-        # menubar_panel.SetBackgroundColour(wx.Colour(255, 255, 255))
-        # menubar_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
         # 메뉴 버튼들
         menubar = MenuBar(panel)
         # 이미지 영역

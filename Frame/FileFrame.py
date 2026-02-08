@@ -1,6 +1,7 @@
 import wx
 import pandas as pd
 import matplotlib
+import time
 
 matplotlib.use('WXAgg')
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
@@ -19,6 +20,8 @@ class FileFrame(wx.Frame):
         self.timer = None
         self.current_time_index = 0
         self.is_playing = False
+        self.last_update_time = None  # 실제 시간 추적
+        self.last_data_time = 0  # 데이터 상의 시간 추적
 
         # 패널 생성
         panel = wx.Panel(self)
@@ -42,6 +45,7 @@ class FileFrame(wx.Frame):
         open_btn = wx.Button(left_panel, label='Open File', size=(150, 40))
         open_btn.Bind(wx.EVT_BUTTON, self.on_open_file)
 
+
         # 재생 컨트롤 버튼들
         control_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.play_btn = wx.Button(left_panel, label='▶ Play', size=(70, 35))
@@ -60,11 +64,21 @@ class FileFrame(wx.Frame):
         control_sizer.Add(self.pause_btn, 0, wx.ALL, 2)
         control_sizer.Add(self.reset_btn, 0, wx.ALL, 2)
 
-        # 속도 조절 슬라이더
-        speed_label = wx.StaticText(left_panel, label="재생 속도:")
-        self.speed_slider = wx.Slider(left_panel, value=50, minValue=10, maxValue=200,
+        # 속도 조절 슬라이더 - 0.1배속 ~ 2배속
+        speed_label = wx.StaticText(left_panel, label="재생 속도: 1.0x")
+        self.speed_label_text = speed_label
+        self.speed_slider = wx.Slider(left_panel, value=100, minValue=10, maxValue=200,
                                       style=wx.SL_HORIZONTAL | wx.SL_LABELS)
         self.speed_slider.SetTickFreq(10)
+        self.speed_slider.Bind(wx.EVT_SLIDER, self.on_speed_change)
+
+        # 윈도우 크기 조절 슬라이더 - 5초 ~ 60초
+        window_label = wx.StaticText(left_panel, label="윈도우 크기: 30초")
+        self.window_label_text = window_label
+        self.window_slider = wx.Slider(left_panel, value=30, minValue=5, maxValue=60,
+                                       style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        self.window_slider.SetTickFreq(5)
+        self.window_slider.Bind(wx.EVT_SLIDER, self.on_window_change)
 
         # 진행 상태 표시
         self.progress_text = wx.StaticText(left_panel, label="진행: 0.0 / 0.0 초")
@@ -84,6 +98,9 @@ class FileFrame(wx.Frame):
         left_sizer.Add(control_sizer, 0, wx.ALL | wx.ALIGN_CENTER, 5)
         left_sizer.Add(speed_label, 0, wx.ALL, 5)
         left_sizer.Add(self.speed_slider, 0, wx.ALL | wx.EXPAND, 5)
+        left_sizer.Add(wx.StaticLine(left_panel), 0, wx.EXPAND | wx.ALL, 5)
+        left_sizer.Add(window_label, 0, wx.ALL, 5)
+        left_sizer.Add(self.window_slider, 0, wx.ALL | wx.EXPAND, 5)
         left_sizer.Add(self.progress_text, 0, wx.ALL, 5)
         left_sizer.Add(wx.StaticLine(left_panel), 0, wx.EXPAND | wx.ALL, 5)
         left_sizer.Add(wx.StaticText(left_panel, label="파일 정보:"), 0, wx.ALL, 5)
@@ -117,7 +134,7 @@ class FileFrame(wx.Frame):
         self.canvas_right = FigureCanvas(right_graph_panel, -1, self.figure_right)
         self.ax_right = self.figure_right.add_subplot(111)
 
-        right_graph_sizer.Add(wx.StaticText(right_graph_panel, label="진행 그래프"),
+        right_graph_sizer.Add(wx.StaticText(right_graph_panel, label="진행 그래프 (이동 윈도우)"),
                               0, wx.ALL | wx.ALIGN_CENTER, 5)
         right_graph_sizer.Add(self.canvas_right, 1, wx.EXPAND | wx.ALL, 5)
         right_graph_panel.SetSizer(right_graph_sizer)
@@ -148,6 +165,20 @@ class FileFrame(wx.Frame):
         # 창 닫기 이벤트
         self.Bind(wx.EVT_CLOSE, self.on_close)
 
+    def on_speed_change(self, event):
+        """속도 슬라이더 변경 이벤트"""
+        speed_value = self.speed_slider.GetValue() / 100.0  # 0.1 ~ 2.0
+        self.speed_label_text.SetLabel(f"재생 속도: {speed_value:.1f}x")
+
+    def on_window_change(self, event):
+        """윈도우 크기 슬라이더 변경 이벤트"""
+        window_size = self.window_slider.GetValue()
+        self.window_label_text.SetLabel(f"윈도우 크기: {window_size}초")
+
+        # 재생 중이 아닐 때만 그래프 업데이트
+        if not self.is_playing and self.df is not None:
+            self.plot_progress_graph()
+
     def setup_empty_graphs(self):
         """빈 그래프 초기 설정"""
         # 왼쪽 그래프 (전체 뷰 - 세로)
@@ -170,8 +201,8 @@ class FileFrame(wx.Frame):
         # 오른쪽 그래프 (진행 뷰 - 가로)
         self.ax_right.clear()
         self.ax_right.set_facecolor('black')
-        self.ax_right.set_xlabel('time (s)', fontsize=12, color='white')
-        self.ax_right.set_ylabel('km/h', fontsize=12, color='white')
+        self.ax_right.set_xlabel('km/h', fontsize=12, color='white')
+        self.ax_right.set_ylabel('time (s)', fontsize=12, color='white')
         self.ax_right.grid(True, color='#333333', linestyle='-', linewidth=0.5, alpha=0.3)
         self.ax_right.tick_params(colors='white')
         self.ax_right.spines['bottom'].set_color('white')
@@ -183,7 +214,6 @@ class FileFrame(wx.Frame):
                            verticalalignment='center',
                            transform=self.ax_right.transAxes,
                            fontsize=20, color='gray', alpha=0.5)
-
 
         self.canvas_left.draw()
         self.canvas_right.draw()
@@ -244,11 +274,19 @@ class FileFrame(wx.Frame):
             file_info += f"총 시간: {self.df['time'].max():.2f}초\n"
             file_info += f"최대 목표 속도: {self.df['ScheduledSpeed'].max():.2f} km/h\n"
             file_info += f"최대 실제 속도: {self.df['SpeedFeedback'].max():.2f} km/h\n"
+
+            # 평균 샘플링 간격 계산
+            time_diffs = self.df['time'].diff().dropna()
+            avg_interval = time_diffs.mean()
+            file_info += f"평균 샘플링 간격: {avg_interval * 1000:.1f} ms\n"
+
             self.file_info_text.SetValue(file_info)
 
             # 애니메이션 초기화
             self.current_time_index = 0
             self.is_playing = False
+            self.last_update_time = None
+            self.last_data_time = 0
 
             # 컨트롤 버튼 활성화
             self.play_btn.Enable(True)
@@ -312,43 +350,59 @@ class FileFrame(wx.Frame):
         self.canvas_left.draw()
 
     def plot_progress_graph(self):
-        """오른쪽에 진행 그래프 표시 (가로 방향)"""
+        """오른쪽에 이동 윈도우 그래프 표시 (가로 방향)"""
         if self.df is None:
             return
 
         self.ax_right.clear()
         self.ax_right.set_facecolor('black')
 
-        # 현재 시간까지의 데이터만 표시
+        # 현재 시간
         current_time = self.df['time'].iloc[self.current_time_index]
-        mask = self.df['time'] <= current_time
 
-        # 데이터 플롯
-        # self.ax_right.plot( self.df[mask]['ScheduledSpeed'],self.df[mask]['time'],
-        #                color='#FF4444', linewidth=2, label='Scheduled')
+        # 윈도우 크기 가져오기
+        window_size = self.window_slider.GetValue()
 
-        self.ax_right.plot(self.df['ScheduledSpeed'], self.df['time'],
-                           color='#FF4444', linewidth=2, label='Scheduled')
-        self.ax_right.plot(self.df[mask]['SpeedFeedback'],self.df[mask]['time'],
+        # 윈도우 범위 계산 (현재 시간 기준 앞뒤)
+        window_start = max(0, current_time - window_size / 2)
+        window_end = min(self.df['time'].max(), current_time + window_size / 2)
+
+        # 윈도우가 끝에 도달하면 고정
+        if window_end >= self.df['time'].max():
+            window_end = self.df['time'].max()
+            window_start = max(0, window_end - window_size)
+        elif window_start <= 0:
+            window_start = 0
+            window_end = min(self.df['time'].max(), window_size)
+
+        # 윈도우 내의 데이터 필터링
+        mask_window = (self.df['time'] >= window_start) & (self.df['time'] <= window_end)
+        mask_current = self.df['time'] <= current_time
+
+        # 데이터 플롯 (윈도우 범위 내에서만)
+        # Scheduled는 윈도우 전체 표시
+        window_df = self.df[mask_window]
+        self.ax_right.plot(window_df['ScheduledSpeed'], window_df['time'],
+                           color='#FF4444', linewidth=2, label='Scheduled', alpha=0.5)
+
+        # Feedback은 현재 시간까지만 표시
+        current_window_df = self.df[mask_window & mask_current]
+        self.ax_right.plot(current_window_df['SpeedFeedback'], current_window_df['time'],
                            color='white', linewidth=2, label='Feedback')
 
         # 축 설정
         self.ax_right.set_ylabel('time (s)', fontsize=12, color='white')
         self.ax_right.set_xlabel('km/h', fontsize=12, color='white')
-        self.ax_right.set_title(f'Progress View - Current Time: {current_time:.1f}s',
-                                fontsize=13, color='white', pad=15)
+        self.ax_right.set_title(
+            f'Moving Window View - Current: {current_time:.1f}s | Window: [{window_start:.1f}s - {window_end:.1f}s]',
+            fontsize=13, color='white', pad=15)
 
         # 그리드
         self.ax_right.grid(True, color='#333333', linestyle='-', linewidth=0.5, alpha=0.3)
 
-        # 축 범위 - 현재 시간 기준으로 윈도우 설정 (30초 윈도우)
-        window_size = 30  # 30초 윈도우
+        # 축 범위 - 윈도우 크기에 맞춰 고정
         max_speed = max(self.df['ScheduledSpeed'].max(), self.df['SpeedFeedback'].max())
-
-        time_start = max(0, current_time - window_size)
-        time_end = min(self.df['time'].max(), current_time + 5)
-
-        self.ax_right.set_ylim(time_start, time_end)
+        self.ax_right.set_ylim(window_start, window_end)
         self.ax_right.set_xlim(0, max_speed * 1.1)
 
         # 현재 위치 표시 라인
@@ -382,15 +436,17 @@ class FileFrame(wx.Frame):
         self.play_btn.Enable(False)
         self.pause_btn.Enable(True)
 
-        # 타이머 시작 (속도 조절 반영)
-        speed_factor = self.speed_slider.GetValue() / 50.0  # 50이 기본 속도 (1배속)
-        interval = max(10, int(100 / speed_factor))  # 최소 10ms
+        # 실제 시간 추적 시작
+        self.last_update_time = time.time()
+        if self.current_time_index < len(self.df):
+            self.last_data_time = self.df['time'].iloc[self.current_time_index]
 
+        # 타이머 시작 (16ms 간격 = 약 60fps)
         if not self.timer:
             self.timer = wx.Timer(self)
             self.Bind(wx.EVT_TIMER, self.on_timer)
 
-        self.timer.Start(interval)
+        self.timer.Start(16)  # 16ms = ~60 FPS
 
     def on_pause(self, event):
         """재생 일시정지"""
@@ -405,6 +461,8 @@ class FileFrame(wx.Frame):
         """처음으로 리셋"""
         self.is_playing = False
         self.current_time_index = 0
+        self.last_update_time = None
+        self.last_data_time = 0
 
         if self.timer:
             self.timer.Stop()
@@ -418,18 +476,36 @@ class FileFrame(wx.Frame):
             self.plot_progress_graph()
 
     def on_timer(self, event):
-        """타이머 이벤트 - 그래프 업데이트"""
+        """타이머 이벤트 - 실제 시간 기반 그래프 업데이트"""
         if self.df is None or not self.is_playing:
             return
 
-        # 인덱스 증가 (속도에 따라)
-        speed_factor = self.speed_slider.GetValue() / 50.0
-        step = max(1, int(10 * speed_factor))
+        # 현재 실제 시간
+        current_real_time = time.time()
 
-        self.current_time_index += step
+        # 경과한 실제 시간 (초)
+        elapsed_real_time = current_real_time - self.last_update_time
+        self.last_update_time = current_real_time
+
+        # 속도 배수 적용
+        speed_factor = self.speed_slider.GetValue() / 100.0  # 0.1 ~ 2.0
+        elapsed_data_time = elapsed_real_time * speed_factor
+
+        # 데이터 상의 목표 시간 계산
+        target_data_time = self.last_data_time + elapsed_data_time
+
+        # 목표 시간에 해당하는 인덱스 찾기
+        while self.current_time_index < len(self.df) - 1:
+            if self.df['time'].iloc[self.current_time_index] >= target_data_time:
+                break
+            self.current_time_index += 1
+
+        # 데이터 시간 업데이트
+        if self.current_time_index < len(self.df):
+            self.last_data_time = target_data_time
 
         # 끝에 도달하면 정지
-        if self.current_time_index >= len(self.df):
+        if self.current_time_index >= len(self.df) - 1:
             self.current_time_index = len(self.df) - 1
             self.on_pause(None)
             return
@@ -440,8 +516,14 @@ class FileFrame(wx.Frame):
             self.current_position_line.set_ydata([current_time, current_time])
             self.canvas_left.draw_idle()
 
-        # 오른쪽 그래프 업데이트
-        self.plot_progress_graph()
+        # 오른쪽 그래프 업데이트 (매 프레임마다는 부하가 크므로 일정 간격마다)
+        # 0.1초마다 업데이트
+        if not hasattr(self, '_last_graph_update'):
+            self._last_graph_update = 0
+
+        if target_data_time - self._last_graph_update >= 0.1:
+            self.plot_progress_graph()
+            self._last_graph_update = target_data_time
 
     def on_close(self, event):
         """창 닫기"""
@@ -457,3 +539,4 @@ if __name__ == '__main__':
     app = wx.App()
     frame = FileFrame(None)
     frame.Show()
+    app.MainLoop()

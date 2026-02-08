@@ -1,7 +1,9 @@
 import wx
 
+from Frame.CameraClientFrame import CameraClientFrame
 from Frame.CameraFrame import CameraFrame
 from Frame.FileFrame import FileFrame
+from Frame.ReportFrame.ReportFrame import ReportFrame
 from Panel.Menubar import MenuBar
 
 
@@ -36,11 +38,14 @@ class MenuFrame(wx.Frame):
         option1_btn = wx.Button(panel, label='파일 분석 화면', size=(250, 50))
         option1_btn.Bind(wx.EVT_BUTTON, self.on_option1)
 
-        option2_btn = wx.Button(panel, label='옵션 2', size=(250, 50))
+        option2_btn = wx.Button(panel, label="카메라-서버", size=(250, 50))
         option2_btn.Bind(wx.EVT_BUTTON, self.on_option2)
 
-        option3_btn = wx.Button(panel, label='옵션 3', size=(250, 50))
+        option3_btn = wx.Button(panel, label='카메라-클라이언트', size=(250, 50))
         option3_btn.Bind(wx.EVT_BUTTON, self.on_option3)
+
+        option4_btn = wx.Button(panel, label='실험리포트', size=(250, 50))
+        option4_btn.Bind(wx.EVT_BUTTON, self.on_option4)
 
         # 뒤로가기 버튼
         back_btn = wx.Button(panel, label='뒤로가기', size=(150, 40))
@@ -50,6 +55,7 @@ class MenuFrame(wx.Frame):
         buttons_sizer.Add(option1_btn, 0, wx.ALL | wx.CENTER, 15)
         buttons_sizer.Add(option2_btn, 0, wx.ALL | wx.CENTER, 15)
         buttons_sizer.Add(option3_btn, 0, wx.ALL | wx.CENTER, 15)
+        buttons_sizer.Add(option4_btn, 0, wx.ALL | wx.CENTER, 15)
 
         # 레이아웃 구성
         content_sizer.AddStretchSpacer()
@@ -72,8 +78,8 @@ class MenuFrame(wx.Frame):
     def on_option1(self, event):
         # 첫 번째 버튼 - SecondFrame으로 이동
         self.Hide()
-        second_frame = FileFrame(self.first_frame)
-        second_frame.Show()
+        file_frame = FileFrame(self.first_frame)
+        file_frame.Show()
         self.Destroy()
 
     def on_option2(self, event):
@@ -82,11 +88,17 @@ class MenuFrame(wx.Frame):
         camera_frame.Show()
         self.Destroy()
 
-
-
     def on_option3(self, event):
-        # 세 번째 버튼 - 추후 구현할 화면
-        wx.MessageBox('옵션 3이 선택되었습니다.\n추후 구현 예정입니다.', '알림', wx.OK | wx.ICON_INFORMATION)
+        self.Hide()
+        camera_client_frame = CameraClientFrame(self.first_frame)
+        camera_client_frame.Show()
+        self.Destroy()
+
+    def on_option4(self, event):
+        self.Hide()
+        report_frame = ReportFrame(self.first_frame)
+        report_frame.Show()
+        self.Destroy()
 
     def on_back(self, event):
         # 첫 번째 프레임으로 돌아가기
